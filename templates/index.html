@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Segmentation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .upload-section {
+            text-align: center;
+            padding: 20px;
+            border: 2px dashed #ccc;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .image-display {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        .image-container {
+            flex: 1;
+            margin: 0 10px;
+            text-align: center;
+        }
+        img {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 5px;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Image Segmentation Tool</h1>
+        
+        <div class="upload-section">
+            <input type="file" id="imageInput" accept="image/*" style="display: none;">
+            <button onclick="document.getElementById('imageInput').click()">Choose Image</button>
+            <p>or drag and drop image here</p>
+        </div>
+
+        <div class="loading" id="loading">
+            Processing image...
+        </div>
+
+        <div class="image-display">
+            <div class="image-container">
+                <h3>Original Image</h3>
+                <img id="originalImage" src="" alt="Original image will appear here">
+            </div>
+            <div class="image-container">
+                <h3>Segmented Image</h3>
+                <img id="segmentedImage" src="" alt="Segmented image will appear here">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const uploadSection = document.querySelector('.upload-section');
+        const imageInput = document.getElementById('imageInput');
+        const loading = document.getElementById('loading');
+        const originalImage = document.getElementById('originalImage');
+        const segmentedImage = document.getElementById('segmentedImage');
+
+        // Handle drag and drop
+        uploadSection.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadSection.style.borderColor = '#007bff';
+        });
+
+        uploadSection.addEventListener('dragleave', () => {
+            uploadSection.style.borderColor = '#ccc';
+        });
+
+        uploadSection.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadSection.style.borderColor = '#ccc';
+            handleImage(e.dataTransfer.files[0]);
+        });
+
+        // Handle file input
+        imageInput.addEventListener('change', (e) => {
+            handleImage(e.target.files[0]);
+        });
+
+        function handleImage(file) {
+            if (!file || !file.type.startsWith('image/')) {
+                alert('Please upload an image file');
+                return;
+            }
+
+            // Display original image
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                originalImage.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+
+            // Send to backend
+            const formData = new FormData();
+            formData.append('image', file);
+
+            loading.style.display = 'block';
+            segmentedImage.style.display = 'none';
+
+            fetch('http://localhost:5000/segment', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                segmentedImage.src = 'data:image/png;base64,' + data.image;
+                segmentedImage.style.display = 'block';
+            })
+            .catch(error => {
+                alert('Error processing image: ' + error.message);
+            })
+            .finally(() => {
+                loading.style.display = 'none';
+            });
+        }
+    </script>
+</body>
+</html>
