@@ -1,6 +1,5 @@
 [build]
 builder = "nixpacks"
-buildCommand = "pip install -r requirements.txt"
 
 [deploy]
 startCommand = "gunicorn app:app"
@@ -16,5 +15,8 @@ apt-get install -y \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
-    python3-opencv
+    libxrender1 \
+    libgstreamer1.0-0 \
+    python3-opencv \
+    ffmpeg
 """
