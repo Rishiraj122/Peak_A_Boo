@@ -27,6 +27,8 @@ CORS(app, resources={
         "origins": "*",
         "methods": ["POST", "GET", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization", "Accept"],
+        "expose_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": False,
         "max_age": 3600
     }
 })
@@ -107,10 +109,15 @@ def index():
 @app.route('/segment', methods=['POST', 'OPTIONS'])
 def segment_image():
     """Handle image segmentation requests"""
+    logger.info(f"Received request: {request.method}")
+    logger.info(f"Headers: {dict(request.headers)}")
+
     if request.method == 'OPTIONS':
+        logger.info("Handling OPTIONS request")
         return '', 204
         
     try:
+        logger.info("Processing POST request")
         logger.info("Received segmentation request")
         logger.info(f"Request headers: {dict(request.headers)}")
         
@@ -167,6 +174,16 @@ def segment_image():
     except Exception as e:
         logger.error(f"General error: {str(e)}", exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500
+
+# Add a test endpoint
+@app.route('/test', methods=['GET', 'OPTIONS'])
+def test():
+    """Test endpoint to verify API connectivity"""
+    if request.method == 'OPTIONS':
+        return '', 204
+    logger.info("Test endpoint accessed")
+    return jsonify({"status": "ok", "message": "API is accessible"}), 200
+
 
 @app.errorhandler(413)
 def request_entity_too_large(error):
