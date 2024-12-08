@@ -24,10 +24,10 @@ app = Flask(__name__, static_folder='static')
 # Configure CORS with specific options
 CORS(app, resources={
     r"/*": {
-        "origins": "*",
-        "methods": ["POST", "GET", "OPTIONS"],
+        "origins": ["http://localhost:3000", "https://your-frontend-domain.com"],  # Add your frontend domain
+        "methods": ["POST", "GET", "OPTIONS", "HEAD"],
         "allow_headers": ["Content-Type", "Authorization", "Accept"],
-        "expose_headers": ["Content-Type", "Authorization"],
+        "expose_headers": ["Content-Type"],
         "supports_credentials": False,
         "max_age": 3600
     }
@@ -106,24 +106,35 @@ def index():
         "version": "1.0.0"
     }), 200
 
-@app.route('/segment', methods=['POST', 'OPTIONS'])
+@app.route('/segment', methods=['GET', 'POST', 'OPTIONS'])
 def segment_image():
     """Handle image segmentation requests"""
-    logger.info(f"Received request: {request.method}")
-    logger.info(f"Headers: {dict(request.headers)}")
-
+    logger.info(f"Received {request.method} request to /segment")
+    logger.info(f"Request headers: {dict(request.headers)}")
+    
+    # Handle GET requests with a proper error
+    if request.method == 'GET':
+        logger.info("Received GET request - returning method not allowed")
+        return jsonify({
+            'error': 'GET method not allowed for this endpoint. Please use POST to upload an image.'
+        }), 405
+    
+    # Handle OPTIONS request
     if request.method == 'OPTIONS':
         logger.info("Handling OPTIONS request")
         return '', 204
         
+    # Must be POST from here
     try:
         logger.info("Processing POST request")
-        logger.info("Received segmentation request")
-        logger.info(f"Request headers: {dict(request.headers)}")
         
-        # Validate request
+        # Check if any files were sent
+        if not request.files:
+            logger.error("No files in request")
+            return jsonify({'error': 'No files uploaded'}), 400
+            
         if 'image' not in request.files:
-            logger.error("No image in request")
+            logger.error("No image field in request")
             return jsonify({'error': 'No image provided'}), 400
         
         file = request.files['image']
@@ -142,39 +153,50 @@ def segment_image():
         logger.info(f"Image size: {file_size} bytes")
         
         if file_size > app.config['MAX_CONTENT_LENGTH']:
+            logger.error(f"File too large: {file_size} bytes")
             return jsonify({'error': 'File too large. Maximum size is 16MB'}), 413
         
         try:
             # Process image with timeout
+            logger.info("Starting background removal")
             result_image = process_image_with_timeout(image_bytes)
-            logger.info("Background removal completed")
+            logger.info("Background removal completed successfully")
+        except TimeoutError:
+            logger.error("Background removal timed out")
+            return jsonify({'error': 'Image processing timed out. Please try again with a smaller image.'}), 500
         except Exception as e:
-            logger.error(f"Error in background removal: {str(e)}")
+            logger.error(f"Error in background removal: {str(e)}", exc_info=True)
             return jsonify({'error': f'Processing error: {str(e)}'}), 500
         
         try:
             # Convert to PNG and encode
+            logger.info("Starting image encoding")
             img = Image.fromarray(result_image)
             img_byte_arr = io.BytesIO()
             img.save(img_byte_arr, format='PNG', optimize=True)
             img_byte_arr = img_byte_arr.getvalue()
             
             encoded = base64.b64encode(img_byte_arr).decode('utf-8')
-            logger.info("Image successfully encoded")
+            logger.info(f"Image successfully encoded, size: {len(encoded)} bytes")
             
             # Clean up
             del result_image, img, img_byte_arr
             gc.collect()
             
-            return jsonify({'image': encoded})
+            return jsonify({
+                'status': 'success',
+                'image': encoded,
+                'original_size': file_size,
+                'processed_size': len(encoded)
+            })
         except Exception as e:
-            logger.error(f"Error in image conversion: {str(e)}")
+            logger.error(f"Error in image conversion: {str(e)}", exc_info=True)
             return jsonify({'error': f'Conversion error: {str(e)}'}), 500
             
     except Exception as e:
         logger.error(f"General error: {str(e)}", exc_info=True)
-        return jsonify({'error': 'Internal server error'}), 500
-
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
+    
 # Add a test endpoint
 @app.route('/test', methods=['GET', 'OPTIONS'])
 def test():
