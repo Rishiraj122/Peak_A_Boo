@@ -7,9 +7,12 @@ import io
 from PIL import Image
 import base64
 import os
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from functools import partial
 
 app = Flask(__name__, static_folder='static')
 CORS(app, resources={r"/*": {"origins": "*"}})
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 class BackgroundRemover:
     def __init__(self):
@@ -39,6 +42,15 @@ class BackgroundRemover:
             print(f"Error in remove_background: {str(e)}")
             raise
 
+def process_image_with_timeout(image_bytes):
+    """Process image with a timeout to prevent hanging"""
+    with ThreadPoolExecutor() as executor:
+        future = executor.submit(remover.remove_background, image_bytes)
+        try:
+            return future.result(timeout=30)  # 30 second timeout
+        except TimeoutError:
+            raise Exception("Image processing timed out")
+
 remover = BackgroundRemover()
 
 @app.route('/')
@@ -49,17 +61,25 @@ def index():
 @app.route('/segment', methods=['POST'])
 def segment_image():
     try:
+        print("Request received") # Add logging
+        
         if 'image' not in request.files:
+            print("No image in request")
             return jsonify({'error': 'No image provided'}), 400
         
         file = request.files['image']
         if file.filename == '':
+            print("Empty filename")
             return jsonify({'error': 'No selected file'}), 400
             
+        print(f"Processing file: {file.filename}")
         image_bytes = file.read()
+        print(f"Image size: {len(image_bytes)} bytes")
         
         try:
-            result_image = remover.remove_background(image_bytes)
+            # Use the timeout wrapper here
+            result_image = process_image_with_timeout(image_bytes)
+            print("Background removal completed")
         except Exception as e:
             print(f"Error in remove_background: {str(e)}")
             return jsonify({'error': f'Processing error: {str(e)}'}), 500
@@ -71,6 +91,7 @@ def segment_image():
             img_byte_arr = img_byte_arr.getvalue()
             
             encoded = base64.b64encode(img_byte_arr).decode('utf-8')
+            print("Image successfully encoded")
             return jsonify({'image': encoded})
         except Exception as e:
             print(f"Error in image conversion: {str(e)}")
